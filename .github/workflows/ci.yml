@@ -1,0 +1,99 @@
+name: hakken-ci
+
+# H13-001 AC#2 + AC#3: regulatory containment test runs on every PR
+# targeting `main` and on every push to `main`. Failure blocks merge and
+# blocks the Railway deploy (which is triggered by main pushes).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel in-flight runs on the same ref — a force-push or rebased PR push
+# should supersede the previous run.
+concurrency:
+  group: hakken-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regulatory-containment:
+    name: Regulatory containment (Spec §10.7 / H13-001)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The narrow gate — exits non-zero if ANY containment scanner test
+      # fails. This is the deploy-blocking check per AC#2/AC#3.
+      - name: Run containment scanner tests
+        run: pnpm run test:containment
+
+      # The broader gate — verifies the scanner has not been dead-code
+      # removed by checking the constants list still contains §10.7's
+      # enumerated banned keys. Belt-and-braces against an attacker who
+      # might shrink the banned list to bypass the gate.
+      - name: Verify §10.7 banned-key inventory present
+        run: |
+          set -euo pipefail
+          for key in amount currency funds credit yield float transfer disburse; do
+            if ! grep -q "'$key'" src/lib/regulatoryContainment.ts; then
+              echo "BANNED_FIELD_NAMES no longer contains '$key' — Spec §10.7 violation."
+              exit 1
+            fi
+          done
+
+  typecheck-and-unit-tests:
+    name: Typecheck + unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript typecheck
+        run: pnpm run typecheck
+
+      - name: Unit tests (Vitest)
+        run: pnpm test
+
+  audit-lock-key:
+    # Belt-and-braces: the rail-identity advisory lock key 73210789 must
+    # not drift. A change here would interleave Hakken's audit chain with
+    # another rail's on shared infra. See memory:project_audit_lock_keys.
+    name: Audit-chain lock key invariant
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert AUDIT_CHAIN_LOCK_KEY = 73210789
+        run: |
+          set -euo pipefail
+          if ! grep -q "AUDIT_CHAIN_LOCK_KEY = 73210789n" src/lib/auditWriter.ts; then
+            echo "AUDIT_CHAIN_LOCK_KEY drifted from Hakken's locked key 73210789."
+            exit 1
+          fi
+          if ! grep -q "73210789" src/db/migrations/0002_audit_schema.sql; then
+            echo "Migration 0002 no longer mentions lock key 73210789."
+            exit 1
+          fi
