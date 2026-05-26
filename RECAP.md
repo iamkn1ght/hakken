@@ -3,10 +3,12 @@
 > Per-rail sprint state, deployment state, test counts, blockers. Master cross-rail tracker lives at `C:\Projects\Platform Rails-instruction pack v1-reboot pack v1.2\RECAP.md`.
 
 **Rail:** Hakken (#5 of 6 KMV platform rails)
-**Status:** 🟡 HK-1 Foundation scaffold authored · pre-flight pending Chamia sign-off
-**Repo:** `c:\Projects\hakken\` (planned remote: `iamkn1ght/hakken`)
+**Status:** 🟡 HK-1 H1-001 + H1-002 + H13-001 CLOSED against live Supabase · H2-001 + H2-002 pending
+**Repo:** [`iamkn1ght/hakken`](https://github.com/iamkn1ght/hakken) · local: `c:\Projects\hakken\`
+**Supabase project:** `sgmzfskxwgtjolfppdae` (eu-west-1, Postgres 17.6) — provisioned 26 May 2026
+**Railway project:** `eb482388-fc19-456d-8fa6-e6563781fa5e` (service `cb7047f7-aff8-45a8-bb09-f1551c5a81b5`)
 **Domain:** `hakken.co.ke` (TBD)
-**Audit chain lock key:** `73210789` (rail-unique; see `src/lib/auditWriter.ts`)
+**Audit chain lock key:** `73210789` (rail-unique; see [src/lib/auditWriter.ts](src/lib/auditWriter.ts))
 
 ---
 
@@ -33,23 +35,23 @@ Authoritative sprint backlog: `C:\Projects\Platform Rails-instruction pack v1-re
 
 H-items: H1, H2, H13. Sprint budget 19 pts. **MVP Gate 1**.
 
-### H1-001 — schema migration v1: core tables (5 pts)
+### H1-001 — schema migration v1: core tables (5 pts) ✅ CLOSED
 - [x] `src/db/migrations/0001_core_tables.sql` authored
 - [x] All 10 core tables present (apps, verticals, entities, broadcasts, tiers, entity_tiers, plugins, ranking_calls, analytics_events, cached_signals)
 - [x] PostGIS extension; `geography(POINT, 4326)` on entities + broadcasts + ranking_calls
 - [x] All FK constraints, indexes, CHECK constraints per Spec §3.2
 - [x] Down-migration written (`0001_core_tables_down.sql`)
-- [ ] Applied to `eu-west-1` Supabase instance — **blocked on operator provisioning**
+- [x] **Applied to eu-west-1 Supabase (`sgmzfskxwgtjolfppdae`) — 26 May 2026; PostGIS installed, all 10 tables present (verified by [scripts/verifyHk1.ts](scripts/verifyHk1.ts))**
 
-### H1-002 — schema migration v1: audit schema (3 pts)
-- [x] `src/db/migrations/0002_audit_schema.sql` authored
+### H1-002 — schema migration v1: audit schema (3 pts) ✅ CLOSED
+- [x] `src/db/migrations/0002_audit_schema.sql` authored + applied
 - [x] `hakken_audit` schema created, separate from `public`
 - [x] Append-only enforcement: RLS + `FORCE ROW LEVEL SECURITY` + REVOKE UPDATE/DELETE + defence-in-depth trigger
 - [x] §A.11 cross-rail audit fields present (traceparent, business_op_id, target_rail, target_operation)
-- [x] Genesis row seeded with SHA-256(`hakken-genesis`); hash_version=1
+- [x] Genesis row seeded with SHA-256(`hakken-genesis`); hash_version=1 (verified against expected hash on the live DB)
 - [x] Spec §3.3 sub-tables exposed as VIEWs on the canonical chain (rationale documented in migration header)
 - [x] Lock key `73210789` registered (CI gate at `.github/workflows/ci.yml`)
-- [ ] UPDATE-reject end-to-end test — **lands at HK-2 (needs TEST_DATABASE_URL)**
+- [x] **UPDATE-reject confirmed end-to-end on live Supabase**: `UPDATE hakken_audit.audit_log` returns the trigger's `append-only — UPDATE rejected` error (verifyHk1.ts).
 
 ### H2-001 — app registration endpoint (3 pts)
 - [ ] `POST /v1/apps` route — **pending; HK-1 step 2**
@@ -82,9 +84,9 @@ H-items: H1, H2, H13. Sprint budget 19 pts. **MVP Gate 1**.
 ## Deployment
 
 - **Local dev:** `pnpm install && pnpm run dev` (requires `.env` from `.env.example`).
-- **Supabase project:** **not yet provisioned**. Required in `eu-west-1` under the Kirimon Market Ventures org (per [[project_hakken_stack_lock]]).
-- **Railway service:** **not yet provisioned**. Expected name `hakken-production`.
-- **GitHub repo:** **not yet created**. Confirmed owner: `iamkn1ght/hakken` (matches Todoku pattern).
+- **Supabase project:** ✅ `sgmzfskxwgtjolfppdae` (eu-west-1, Postgres 17.6). Migrations 0001 + 0002 applied 26 May 2026.
+- **Railway service:** ✅ Provisioned. Project `eb482388-fc19-456d-8fa6-e6563781fa5e`, service `cb7047f7-aff8-45a8-bb09-f1551c5a81b5`. First deploy pending.
+- **GitHub repo:** ✅ [`iamkn1ght/hakken`](https://github.com/iamkn1ght/hakken). Initial HK-1 commit `0636e67` pushed to `main` (26 May 2026).
 
 ---
 
@@ -103,15 +105,15 @@ Mirroring rail-wide convention: Identiti closed at 233/233, KP at 416/416, Todok
 
 ## Blockers
 
-| ID | Description | Owner | Required by |
-|---|---|---|---|
-| HK-1-B1 | Supabase project provisioned in eu-west-1 under KMV org | Chamia | First migration run |
-| HK-1-B2 | Railway service provisioned (`hakken-production`) | Chamia | First deploy |
-| HK-1-B3 | GitHub repo created at `iamkn1ght/hakken` | Chamia | First push |
-| HK-1-B4 | `.env` populated with `DATABASE_URL`, KP/Identiti/Todoku/Kafka secrets | Chamia + Silvia | First boot |
-| HK-3-B1 | KP-15 v1.1 materialised views | KP Eng (Chamia escalation) | HK-3 lock (SC-1) |
-| HK-4-B1 | Managed Kafka broker (Confluent Cloud or Upstash) | Chamia + Track A | HK-4 |
-| HK-4-B2 | ID-14 Phase 2 (`SCOPE_DEGRADED` webhook) | Identiti Eng | HK-4 (stub OK) |
+| ID | Description | Owner | Required by | Status |
+|---|---|---|---|---|
+| HK-1-B1 | Supabase project provisioned in eu-west-1 under KMV org | Chamia | First migration run | ✅ 26 May 2026 |
+| HK-1-B2 | Railway service provisioned | Chamia | First deploy | ✅ 26 May 2026 |
+| HK-1-B3 | GitHub repo created at `iamkn1ght/hakken` | Chamia | First push | ✅ 26 May 2026 |
+| HK-1-B4 | `.env` populated with `DATABASE_URL`, KP/Identiti/Todoku/Kafka secrets | Chamia + Silvia | First boot | 🟡 `DATABASE_URL` set; KP/Identiti/Todoku/Kafka secrets pending |
+| HK-3-B1 | KP-15 v1.1 materialised views | KP Eng (Chamia escalation) | HK-3 lock (SC-1) | 🟡 open |
+| HK-4-B1 | Managed Kafka broker (Confluent Cloud or Upstash) | Chamia + Track A | HK-4 | 🟡 open |
+| HK-4-B2 | ID-14 Phase 2 (`SCOPE_DEGRADED` webhook) | Identiti Eng | HK-4 (stub OK) | 🟡 open |
 
 ---
 
