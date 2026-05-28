@@ -85,7 +85,9 @@ H-items: H1, H2, H13. Sprint budget 19 pts. **MVP Gate 1**.
 
 - **Local dev:** `pnpm install && pnpm run dev` (requires `.env` from `.env.example`).
 - **Supabase project:** ✅ `sgmzfskxwgtjolfppdae` (eu-west-1, Postgres 17.6). Migrations 0001 + 0002 applied 26 May 2026.
-- **Railway service:** ✅ Provisioned. Project `eb482388-fc19-456d-8fa6-e6563781fa5e`, service `cb7047f7-aff8-45a8-bb09-f1551c5a81b5`. First deploy pending.
+- **Railway service:** ✅ Live at https://hakken-production.up.railway.app. Project `eb482388-fc19-456d-8fa6-e6563781fa5e`, service `cb7047f7-aff8-45a8-bb09-f1551c5a81b5`, env `448a45ac-ae2e-4dbd-baf3-68a4be237c66`. Deploy successful 28 May 2026.
+  - `GET /v1/health` → 200 `{"ok":true,"status":"healthy","version":"0.1.0-hk1"}`
+  - `GET /v1/health/deep` → 200 `database: healthy`, `audit_log: healthy` (live Supabase round-trip + genesis row read), all other components `unavailable` (expected until HK-3+).
 - **GitHub repo:** ✅ [`iamkn1ght/hakken`](https://github.com/iamkn1ght/hakken). Initial HK-1 commit `0636e67` pushed to `main` (26 May 2026).
 
 ---
