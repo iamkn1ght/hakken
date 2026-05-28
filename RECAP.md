@@ -3,7 +3,7 @@
 > Per-rail sprint state, deployment state, test counts, blockers. Master cross-rail tracker lives at `C:\Projects\Platform Rails-instruction pack v1-reboot pack v1.2\RECAP.md`.
 
 **Rail:** Hakken (#5 of 6 KMV platform rails)
-**Status:** 🟡 HK-1 H1-001 + H1-002 + H13-001 CLOSED against live Supabase · H2-001 + H2-002 pending
+**Status:** 🟢 HK-1 CLOSED 19/19 pts · MVP Gate 1 met (pending Chamia + Silvia sign-off) · live on Railway + Supabase · HK-2 next
 **Repo:** [`iamkn1ght/hakken`](https://github.com/iamkn1ght/hakken) · local: `c:\Projects\hakken\`
 **Supabase project:** `sgmzfskxwgtjolfppdae` (eu-west-1, Postgres 17.6) — provisioned 26 May 2026
 **Railway project:** `eb482388-fc19-456d-8fa6-e6563781fa5e` (service `cb7047f7-aff8-45a8-bb09-f1551c5a81b5`)
@@ -16,7 +16,7 @@
 
 | Sprint | Goal | Status | Notes |
 |---|---|---|---|
-| **HK-1** | Foundation: schema migration v1, app/vertical registration scaffolds, regulatory containment CI gate | 🟡 Scaffold authored · S1 gate pending sign-off | Build pack 16 May 2026 |
+| **HK-1** | Foundation: schema migration v1, app/vertical registration, regulatory containment CI gate | 🟢 CLOSED 19/19 · MVP Gate 1 | Live; pending Chamia+Silvia gate sign-off |
 | HK-2 | Entity API + geo-indexing + observability baseline | ⚪ Pending HK-1 close | |
 | HK-3 | Broadcast API + indexer + structured logging | ⚪ Pending HK-2 + KP-15 SC-1 sign-off | |
 | HK-4 | Ranking engine v0 + Redis hot-path cache | ⚪ Pending HK-3 | |
@@ -53,12 +53,21 @@ H-items: H1, H2, H13. Sprint budget 19 pts. **MVP Gate 1**.
 - [x] Lock key `73210789` registered (CI gate at `.github/workflows/ci.yml`)
 - [x] **UPDATE-reject confirmed end-to-end on live Supabase**: `UPDATE hakken_audit.audit_log` returns the trigger's `append-only — UPDATE rejected` error (verifyHk1.ts).
 
-### H2-001 — app registration endpoint (3 pts)
-- [ ] `POST /v1/apps` route — **pending; HK-1 step 2**
+### H2-001 — app registration endpoint (3 pts) ✅ CLOSED
+- [x] `POST /v1/apps` ([src/modules/apps/](src/modules/apps/)) writes app_slug, app_name, vertical, sided, rate_limit_rpm, status, server-generated hmac_secret (returned once)
+- [x] Admin-scoped token guard ([src/plugins/adminAuth.ts](src/plugins/adminAuth.ts), onRequest, constant-time compare, fail-closed); unauthenticated → 401
+- [x] Duplicate app_slug → 409 `APP_SLUG_CONFLICT` (structured envelope)
+- [x] Registration emits a hash-chained audit entry (`admin.app.register`)
+- [x] `GET /v1/apps/:app_id` (admin; hmac_secret never re-surfaced)
+- [x] Down-migration: apps row removed by 0001 down-migration
 
-### H2-002 — vertical registration endpoint (3 pts)
-- [ ] `POST /v1/verticals` route — **pending; HK-1 step 2**
-- [ ] `klokd` + `lunch_drop` bootstrap rows — **pending**
+### H2-002 — vertical registration endpoint (3 pts) ✅ CLOSED
+- [x] `POST /v1/verticals` ([src/modules/verticals/](src/modules/verticals/)) registers + links to an app
+- [x] Migration 0003 adds `app_id`, `plugin_config`, `schema_version`, `status` to verticals (AC#3)
+- [x] Unregistered app → 404 `VERTICAL_APP_NOT_FOUND` (AC#4)
+- [x] `klokd` (two_sided) + `lunch_drop` (one_sided) bootstrapped via [scripts/seedBootstrap.ts](scripts/seedBootstrap.ts) against live Supabase (AC#2)
+- [x] Vertical isolation verified at the data layer: each vertical links only to its own app (AC#5); full cross-query isolation lands at HK-2 with entity queries
+- [x] Registration emits a hash-chained audit entry (`admin.vertical.register`)
 
 ### H13-001 — regulatory containment CI integration (5 pts)
 - [x] `src/lib/regulatoryContainment.ts` — recursive scanner with §10.7 + AC#4 banned-key list
@@ -96,12 +105,14 @@ H-items: H1, H2, H13. Sprint budget 19 pts. **MVP Gate 1**.
 
 | Suite | Files | Tests | Status |
 |---|---|---|---|
-| Unit (`src/**/*.test.ts`) | 2 | **52 / 52** ✅ | auditWriter (16) + regulatoryContainment (36) |
-| Integration (`test/integration`) | 0 | 0 | ⚪ lands at HK-2 with TEST_DATABASE_URL |
+| Unit (`src/**/*.test.ts`) | 3 | **60 / 60** ✅ | auditWriter (16) + regulatoryContainment (36) + errors (8) |
+| Route inject (`test/hk1Routes.test.ts`) | 1 | **10 / 10** ✅ | health, admin 401s, validation 400, containment 422 (no DB) |
+| **Total** | **4** | **70 / 70** ✅ | |
+| Live verify (`scripts/verifyHk1.ts`) | — | 30 checks | schema + H2 bootstrap + audit-chain recompute (5 rows) on live Supabase |
 
 Typecheck: ✅ clean (`pnpm run typecheck`).
 
-Mirroring rail-wide convention: Identiti closed at 233/233, KP at 416/416, Todoku at 250/250, Helpan AI at 294/294. Hakken HK-1 close at 52/52 — additional integration tests land at HK-2 once Supabase is provisioned.
+Mirroring rail-wide convention: Identiti closed at 233/233, KP at 416/416, Todoku at 250/250, Helpan AI at 294/294. Hakken HK-1 close at 70/70 unit/route + a live verify gate. Repo round-trip integration tests (gated on a future `TEST_DATABASE_URL`) land at HK-2 — there is no throwaway test DB yet and the audit chain is append-only, so HK-1 proves the DB path via the real klokd/lunch_drop bootstrap + verify probe rather than disposable test rows.
 
 ---
 
@@ -113,6 +124,7 @@ Mirroring rail-wide convention: Identiti closed at 233/233, KP at 416/416, Todok
 | HK-1-B2 | Railway service provisioned | Chamia | First deploy | ✅ 26 May 2026 |
 | HK-1-B3 | GitHub repo created at `iamkn1ght/hakken` | Chamia | First push | ✅ 26 May 2026 |
 | HK-1-B4 | `.env` populated with `DATABASE_URL`, KP/Identiti/Todoku/Kafka secrets | Chamia + Silvia | First boot | 🟡 `DATABASE_URL` set; KP/Identiti/Todoku/Kafka secrets pending |
+| HK-1-B5 | `ADMIN_API_TOKEN` set on Railway + redeploy (so POST /v1/apps + /v1/verticals work in prod) | Chamia | HK-1 prod admin ops | 🟡 **action needed** — see note below |
 | HK-3-B1 | KP-15 v1.1 materialised views | KP Eng (Chamia escalation) | HK-3 lock (SC-1) | 🟡 open |
 | HK-4-B1 | Managed Kafka broker (Confluent Cloud or Upstash) | Chamia + Track A | HK-4 | 🟡 open |
 | HK-4-B2 | ID-14 Phase 2 (`SCOPE_DEGRADED` webhook) | Identiti Eng | HK-4 (stub OK) | 🟡 open |

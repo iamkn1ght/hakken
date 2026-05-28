@@ -29,6 +29,16 @@ export interface AppConfig {
     readonly ttlSeconds: number;
   };
 
+  /**
+   * Admin API token (HK-1 interim auth for the operator-only registration
+   * endpoints POST /v1/apps and POST /v1/verticals). Empty → the admin
+   * guard fails closed: every admin request gets 401. Replaced by the full
+   * HMAC + customer-JWT chain at HK-5.
+   */
+  readonly admin: {
+    readonly apiToken: string;
+  };
+
   readonly secrets: {
     readonly envelopeProvider: SecretsEnvelopeProvider;
   };
@@ -211,6 +221,10 @@ export function loadConfig(): AppConfig {
         60,
         7 * 24 * 3600
       ),
+    },
+
+    admin: {
+      apiToken: optional('ADMIN_API_TOKEN') ?? '',
     },
 
     secrets: {

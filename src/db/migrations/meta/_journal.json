@@ -15,6 +15,13 @@
       "when": 1779753660000,
       "tag": "0002_audit_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779926400000,
+      "tag": "0003_verticals_registration",
+      "breakpoints": true
     }
   ]
 }

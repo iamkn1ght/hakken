@@ -21,9 +21,10 @@
     "test:containment": "vitest run src/lib/regulatoryContainment.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file=.env scripts/migrate.ts",
+    "db:seed:bootstrap": "tsx --env-file=.env scripts/seedBootstrap.ts",
     "db:check": "drizzle-kit check",
     "db:studio": "drizzle-kit studio",
-    "audit:verify": "tsx --env-file=.env scripts/verifyAuditChain.ts"
+    "verify:hk1": "tsx --env-file=.env scripts/verifyHk1.ts"
   },
   "dependencies": {
     "@fastify/sensible": "^5.6.0",

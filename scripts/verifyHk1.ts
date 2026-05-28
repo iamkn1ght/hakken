@@ -14,6 +14,10 @@
 
 import { createHash } from 'node:crypto';
 import postgres from 'postgres';
+import {
+  computeEntryHashForVersion,
+  type AuditHashVersion,
+} from '../src/lib/auditWriter.js';
 
 const url = process.env['DATABASE_URL'];
 if (!url) {
@@ -139,7 +143,147 @@ try {
   const migrations = await sql<{ hash: string }[]>`
     SELECT hash FROM _drizzle_migrations ORDER BY created_at
   `;
-  check('2 migrations applied', migrations.length === 2);
+  check('3 migrations applied', migrations.length === 3);
+
+  // ---- H2-001 / H2-002 bootstrap ------------------------------------------
+  console.warn('[verify] H2 bootstrap — apps + verticals');
+  const appRows = await sql<{ app_slug: string; sided: string }[]>`
+    SELECT app_slug, sided FROM apps WHERE app_slug IN ('klokd', 'lunch_drop')
+  `;
+  const appBySlug = new Map(appRows.map((r) => [r.app_slug, r.sided]));
+  check('app klokd present (two_sided)', appBySlug.get('klokd') === 'two_sided');
+  check('app lunch_drop present (one_sided)', appBySlug.get('lunch_drop') === 'one_sided');
+
+  const vertRows = await sql<
+    { vertical: string; sided: string; app_id: string | null; status: string }[]
+  >`
+    SELECT vertical, sided, app_id, status FROM verticals
+     WHERE vertical IN ('klokd', 'lunch_drop')
+  `;
+  const vertBySlug = new Map(vertRows.map((r) => [r.vertical, r]));
+  check(
+    'vertical klokd present (two_sided, linked to an app)',
+    vertBySlug.get('klokd')?.sided === 'two_sided' && !!vertBySlug.get('klokd')?.app_id
+  );
+  check(
+    'vertical lunch_drop present (one_sided, linked to an app)',
+    vertBySlug.get('lunch_drop')?.sided === 'one_sided' && !!vertBySlug.get('lunch_drop')?.app_id
+  );
+
+  // Vertical isolation (H2-002 AC#5) at the data layer: each vertical's app_id
+  // resolves to the matching app_slug; no cross-linking.
+  const klokdVert = vertBySlug.get('klokd');
+  const lunchVert = vertBySlug.get('lunch_drop');
+  if (klokdVert?.app_id && lunchVert?.app_id) {
+    const linkRows = await sql<{ app_id: string; app_slug: string }[]>`
+      SELECT app_id::text, app_slug FROM apps
+       WHERE app_id IN (${klokdVert.app_id}::uuid, ${lunchVert.app_id}::uuid)
+    `;
+    const slugByAppId = new Map(linkRows.map((r) => [r.app_id, r.app_slug]));
+    check(
+      'vertical isolation: klokd vertical links to klokd app',
+      slugByAppId.get(klokdVert.app_id) === 'klokd'
+    );
+    check(
+      'vertical isolation: lunch_drop vertical links to lunch_drop app',
+      slugByAppId.get(lunchVert.app_id) === 'lunch_drop'
+    );
+  }
+
+  console.warn('[verify] audit entries for the bootstrap registrations');
+  const auditCounts = await sql<{ action: string; n: number }[]>`
+    SELECT action, COUNT(*)::int AS n
+      FROM hakken_audit.audit_log
+     WHERE action IN ('admin.app.register', 'admin.vertical.register')
+     GROUP BY action
+  `;
+  const countByAction = new Map(auditCounts.map((r) => [r.action, r.n]));
+  check(
+    'audit: >=2 admin.app.register entries',
+    (countByAction.get('admin.app.register') ?? 0) >= 2
+  );
+  check(
+    'audit: >=2 admin.vertical.register entries',
+    (countByAction.get('admin.vertical.register') ?? 0) >= 2
+  );
+
+  // ---- Audit hash-chain integrity walk ------------------------------------
+  console.warn('[verify] audit hash-chain integrity (recompute + link check)');
+  const chain = await sql<
+    {
+      id: string;
+      app_id: string | null;
+      actor_type: string;
+      actor_id: string;
+      account_uuid: string | null;
+      action: string;
+      resource_type: string | null;
+      resource_id: string | null;
+      target_rail: string | null;
+      target_operation: string | null;
+      request_id: string;
+      traceparent: string | null;
+      business_op_id: string | null;
+      initiated_by: string | null;
+      agent_id: string | null;
+      delegated_authority_jti: string | null;
+      outcome: string;
+      detail: Record<string, unknown> | null;
+      previous_hash: string | null;
+      entry_hash: string;
+      hash_version: number;
+    }[]
+  >`
+    SELECT id, app_id, actor_type, actor_id, account_uuid, action, resource_type,
+           resource_id, target_rail, target_operation, request_id, traceparent,
+           business_op_id, initiated_by, agent_id, delegated_authority_jti,
+           outcome, detail, previous_hash, entry_hash, hash_version
+      FROM hakken_audit.audit_log
+     ORDER BY created_at ASC, id ASC
+  `;
+  let chainOk = true;
+  let prevHash: string | null = null;
+  for (const row of chain) {
+    // Link check: each row's previous_hash must equal the prior row's entry_hash.
+    if (prevHash !== null && row.previous_hash !== prevHash) {
+      chainOk = false;
+      break;
+    }
+    // The genesis row's entry_hash is SHA-256('hakken-genesis') — a seed, not
+    // a composition hash. Don't recompute it; just anchor the chain on it.
+    if (row.action === 'audit_log.genesis') {
+      prevHash = row.entry_hash;
+      continue;
+    }
+    // Recompute the entry_hash from the persisted columns.
+    const recomputed = computeEntryHashForVersion(row.hash_version as AuditHashVersion, {
+      id: row.id,
+      actorType: row.actor_type,
+      actorId: row.actor_id,
+      accountUuid: row.account_uuid,
+      action: row.action,
+      resourceType: row.resource_type,
+      resourceId: row.resource_id,
+      appId: row.app_id,
+      requestId: row.request_id,
+      traceparent: row.traceparent,
+      outcome: row.outcome,
+      initiatedBy: row.initiated_by,
+      agentId: row.agent_id,
+      delegatedAuthorityJti: row.delegated_authority_jti,
+      targetRail: row.target_rail,
+      targetOperation: row.target_operation,
+      businessOpId: row.business_op_id,
+      detail: row.detail,
+      previousHash: row.previous_hash ?? '',
+    });
+    if (recomputed !== row.entry_hash) {
+      chainOk = false;
+      break;
+    }
+    prevHash = row.entry_hash;
+  }
+  check(`audit chain intact + tamper-evident (${chain.length} rows)`, chainOk);
 } catch (err) {
   console.error('[verify] aborted:', err instanceof Error ? err.message : err);
   failures.push('verification aborted');

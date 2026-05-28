@@ -40,14 +40,23 @@ const regulatoryContainmentPluginImpl: FastifyPluginAsync<
 
   const exempt = new Set(config.exemptPaths ?? DEFAULT_EXEMPT_PATHS);
 
-  fastify.addHook('preHandler', async (request) => {
-    if (exempt.has(request.url) || exempt.has(request.routerPath ?? request.url)) {
+  // preValidation runs after body parsing but BEFORE AJV validation, so we
+  // scan the RAW body. This matters because the rail-wide AJV setting
+  // `removeAdditional: 'failing'` would otherwise strip a banned top-level
+  // field off an additionalProperties:false schema before a preHandler hook
+  // could see it — silently dropping it instead of rejecting it. Scanning
+  // pre-validation guarantees any banned field anywhere yields a consistent
+  // 422 REGULATORY_CONTAINMENT_VIOLATION (Spec §10.7: endpoints must not
+  // ACCEPT these fields, not merely strip them).
+  fastify.addHook('preValidation', async (request) => {
+    const path = request.url.split('?')[0] ?? request.url;
+    if (exempt.has(path)) {
       return;
     }
     if (request.body === undefined || request.body === null) {
       return;
     }
-    const violations = scanForContainmentViolations(request.body, request.url);
+    const violations = scanForContainmentViolations(request.body, path);
     if (violations.length > 0) {
       throw new RegulatoryContainmentError(violations);
     }

@@ -27,7 +27,10 @@ import { dbPlugin } from './plugins/db.js';
 import { errorMapperPlugin } from './plugins/errorMapper.js';
 import { requestIdPlugin } from './plugins/requestId.js';
 import { regulatoryContainmentPlugin } from './plugins/regulatoryContainmentPlugin.js';
+import { adminAuthPlugin } from './plugins/adminAuth.js';
 import { healthRoutes } from './modules/health/routes.js';
+import { appsRoutes } from './modules/apps/routes.js';
+import { verticalsRoutes } from './modules/verticals/routes.js';
 
 export interface BuildAppOverrides {
   /** Skip dbPlugin and use these instead (for integration tests). */
@@ -85,9 +88,15 @@ export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> 
     enforced: config.regulatoryContainment.enforced,
   });
 
+  // HK-1 interim admin guard for the operator-only registration endpoints.
+  // Decorates fastify.requireAdmin (a per-route preHandler).
+  await app.register(adminAuthPlugin, { adminApiToken: config.admin.apiToken });
+
   await app.register(
     async (v1) => {
       await v1.register(healthRoutes, { serviceVersion: config.serviceVersion });
+      await v1.register(appsRoutes);
+      await v1.register(verticalsRoutes);
     },
     { prefix: '/v1' }
   );

@@ -4,7 +4,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { pgTable, text, jsonb, timestamp, check } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, jsonb, timestamp, uuid, index, check } from 'drizzle-orm/pg-core';
 
 export const verticals = pgTable(
   'verticals',
@@ -15,12 +15,28 @@ export const verticals = pgTable(
     broadcastTypes: jsonb('broadcast_types').notNull().default(sql`'[]'::jsonb`),
     rankingPlugins: jsonb('ranking_plugins').notNull().default(sql`'[]'::jsonb`),
     ttlDefaults: jsonb('ttl_defaults').notNull().default(sql`'{}'::jsonb`),
+    // Added by migration 0003 (H2-002).
+    appId: uuid('app_id'),
+    pluginConfig: jsonb('plugin_config').notNull().default(sql`'{}'::jsonb`),
+    schemaVersion: integer('schema_version').notNull().default(1),
+    status: text('status').notNull().default('active'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    appIdx: index('verticals_app_idx')
+      .on(t.appId)
+      .where(sql`${t.appId} IS NOT NULL`),
     sidedCheck: check(
       'verticals_sided_chk',
       sql`${t.sided} IN ('one_sided', 'two_sided')`
+    ),
+    statusCheck: check(
+      'verticals_status_chk',
+      sql`${t.status} IN ('active', 'suspended', 'retired')`
+    ),
+    schemaVersionPositive: check(
+      'verticals_schema_version_positive',
+      sql`${t.schemaVersion} > 0`
     ),
   })
 );
